@@ -1,14 +1,17 @@
 // src/config/env.ts
 import dotenv from "dotenv";
+import * as process from "node:process";
 
 dotenv.config(); // загружает .env → process.env
 
 export const Env = {
     PORT: process.env.PORT || "4000",
     MONGODB_URI: process.env.MONGODB_URI || "",
-    JWT_SECRET: process.env.JWT_SECRET || "",
-    JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
+    JWT_SECRET: process.env.JWT_SECRET || "kapa",
+    JWT_EXPIRES_IN: Number(process.env.JWT_EXPIRES_IN ?? 86400), // 👈 вот это ключевой момент
     NODE_ENV: process.env.NODE_ENV || "development",
+    FRONTEND_URL: process.env.FRONTEND_URL,
+    JWT_COOKIE_NAME: process.env.JWT_COOKIE_NAME
 };
 
 // Проверим важные переменные при старте

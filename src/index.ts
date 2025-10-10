@@ -6,20 +6,26 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
-import { Env } from "./config/env.js"; // ← вот отсюда берём env
+import { Env } from "@config/env"; // ← вот отсюда берём env
+import authRoutes from "@routers/auth.route";
 
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({
+    origin: Env.FRONTEND_URL,   // например http://localhost:3000
+    credentials: true,          // важное!http://localhost:3000/auth
+}));
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(cookieParser());
 
 // test route
-app.get("/health", (_req: Request, res: Response) => {
+app.get("/", (_req: Request, res: Response) => {
     res.json({ ok: true, env: Env.NODE_ENV });
 });
+
+app.use("/auth", authRoutes);
 
 mongoose
     .connect(Env.MONGODB_URI)
