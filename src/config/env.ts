@@ -11,7 +11,11 @@ export const Env = {
     JWT_EXPIRES_IN: Number(process.env.JWT_EXPIRES_IN ?? 86400), // 👈 вот это ключевой момент
     NODE_ENV: process.env.NODE_ENV || "development",
     FRONTEND_URL: process.env.FRONTEND_URL,
-    JWT_COOKIE_NAME: process.env.JWT_COOKIE_NAME
+    JWT_COOKIE_NAME: process.env.JWT_COOKIE_NAME,
+    MOYSKLAD_BASE: process.env.MOYSKLAD_BASE,
+    MOYSKLAD_LOGIN: process.env.MOYSKLAD_LOGIN,
+    MOYSKLAD_PASSWORD: process.env.MOYSKLAD_PASSWORD,
+
 };
 
 // Проверим важные переменные при старте
