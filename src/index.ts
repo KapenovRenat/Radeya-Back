@@ -8,6 +8,7 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import { Env } from "@config/env"; // ← вот отсюда берём env
 import authRoutes from "@routers/auth.route";
+import productRoute from "@routers/product.route";
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 app.use("/auth", authRoutes);
+app.use(productRoute);
 
 mongoose
     .connect(Env.MONGODB_URI)

@@ -134,11 +134,11 @@ async function main() {
                         || p?.priceType?.name?.toLowerCase().includes("kaspi")
                 );
 
+
                 const pro = {
                     msId: row.id,
                     name: row.name || null,
-                    code: row.code || null,
-                    article: row.article || null,
+                    article: row.code || null,
                     updatedAtMs: row.updated || null,
                     imageUrl: miniatureUrl, // ← миниатюра
 
@@ -166,8 +166,7 @@ async function main() {
                 return {
                     msId: row.id,
                     name: row.name || null,
-                    code: row.code || null,
-                    article: row.article || null,
+                    article: row.code || null,
                     updatedAtMs: row.updated || null,
                     imageUrl: miniatureUrl, // ← миниатюра
 
