@@ -3,6 +3,6 @@ import { Router } from "express";
 import { listProducts } from "@controllers/products.controllers";
 
 const router = Router();
-router.post("/products", listProducts);
+router.post("/", listProducts);
 
 export default router;

@@ -17,7 +17,11 @@ export async function listProducts(req: Request, res: Response) {
 
         // если передана строка поиска — фильтруем по имени
         if (search) {
-            filter.name = { $regex: search, $options: "i" }; // регистронезависимый поиск
+            // filter.name = { $regex: search, $options: "i" }; // регистронезависимый поиск
+            filter.$or = [
+                { name: { $regex: search, $options: "i" } },
+                { article: { $regex: search, $options: "i" } },
+            ];
         }
 
         const [items, total] = await Promise.all([

@@ -44,3 +44,24 @@ export const requireRole = (role: "user" | "admin" | "manager") => {
         next();
     };
 };
+
+export interface AuthRequest extends Request {
+    user?: any;
+}
+
+export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+        const token = req.cookies?.access_token;
+
+        if (!token) {
+            return res.status(401).json({ message: "Нет токена. Авторизация требуется." });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+        req.user = decoded;
+
+        next(); // пропускаем дальше
+    } catch (err) {
+        return res.status(401).json({ message: "Недействительный или просроченный токен" });
+    }
+}
