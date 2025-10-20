@@ -6,7 +6,8 @@
     "dev": "nodemon --exec tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "ms:raw": "tsx src/worker/mysklad.ts"
+    "ms:raw": "tsx src/worker/mysklad.ts",
+    "worker:kaspi": "tsx src/worker/kaspiWorker.ts"
   },
   "repository": {
     "type": "git",
