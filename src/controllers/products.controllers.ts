@@ -6,19 +6,27 @@ export async function listProducts(req: Request, res: Response) {
     try {
         const page  = Math.max(1, Number(req.body.page) || 1);
         const limit = Math.min(100, Number(req.body.limit) || 20);
+        const search = String(req.body.search || "").trim();
 
         console.log({
             page,
             limit,
         })
 
+        const filter: any = {};
+
+        // если передана строка поиска — фильтруем по имени
+        if (search) {
+            filter.name = { $regex: search, $options: "i" }; // регистронезависимый поиск
+        }
+
         const [items, total] = await Promise.all([
-            Product.find()
+            Product.find(filter)
                 .sort({ updatedAt: -1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),
-            Product.countDocuments(),
+            Product.countDocuments(filter),
         ]);
 
         res.json({
