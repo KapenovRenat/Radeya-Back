@@ -1,5 +1,7 @@
 import axios from "axios";
 import { Env } from "@config/env";
+import {Order} from "@models/orders/Order";
+import mongoose from "mongoose";
 
 // за последние 24 часа
 // const to: number = Date.now(); // текущее время
@@ -15,27 +17,6 @@ export const kaspiApi = axios.create({
         timeout: 20000,
     },
 });
-
-// const params = {
-//     // 'filter[orders][state]': 'NEW', // (опционально) статус заказа: NEW, PICKUP, DELIVERY и т.д.
-//     'page[number]': 0,
-//     'page[size]': 100, // максимум 100 заказов на страницу
-//     'filter[orders][creationDate][$ge]': from,
-//     'filter[orders][creationDate][$le]': to,
-// };
-//
-// export async function fetchKaspiOrders() {
-//     try {
-//         const response = await kaspiApi.get("/orders", {params});
-//
-//
-//         console.log("✅ Заказы Kaspi:", pretty(response.data));
-//     } catch (error: any) {
-//         console.error("❌ Ошибка при получении заказов Kaspi:", error.response?.data || error.message);
-//     }
-// }
-//
-// fetchKaspiOrders()
 
 const paramsSerializer = { serialize: (p: any) => new URLSearchParams(p).toString() };
 
@@ -70,7 +51,22 @@ export async function fetchAllOrdersForOctober(year = new Date().getFullYear()) 
 
             // у разных версий API массив может быть в data или content
             const items: any[] = data?.data ?? data?.content ?? [];
+
+            for (let item of items) {
+                const orderItem = {
+                    ...item,
+                    ...item.attributes,
+                }
+
+                const res = await Order.updateOne(
+                    { kmId: item.id },
+                    { $set: orderItem },
+                    { upsert: true }
+                );
+            }
+
             all.push(...items);
+
 
             // эвристики окончания пагинации:
             const hasNextLink =
@@ -89,5 +85,15 @@ export async function fetchAllOrdersForOctober(year = new Date().getFullYear()) 
     return all;
 }
 
+mongoose
+    .connect(Env.MONGODB_URI)
+    .then(() => {
+        console.log("✅ MongoDB connected");
+        fetchAllOrdersForOctober().then(list => console.dir(list.slice(0,3), {depth: null}));
+    })
+    .catch((err) => {
+        console.error("MongoDB connection error:", err);
+        process.exit(1);
+    });
 // единичный запуск для проверки:
-fetchAllOrdersForOctober().then(list => console.dir(list.slice(0,3), {depth: null}));
+// fetchAllOrdersForOctober().then(list => console.dir(list.slice(0,3), {depth: null}));

@@ -8,11 +8,6 @@ export async function listProducts(req: Request, res: Response) {
         const limit = Math.min(100, Number(req.body.limit) || 20);
         const search = String(req.body.search || "").trim();
 
-        console.log({
-            page,
-            limit,
-        })
-
         const filter: any = {};
 
         // если передана строка поиска — фильтруем по имени

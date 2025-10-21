@@ -4,6 +4,7 @@ export interface IOrder extends Document {
     // Идентификаторы
     kmId: string;               // UUID товара в МойСклад
     code: string | null;    // код заказа
+    type: string | null;
     creationDate: number | null;    // дата заказа
     totalPrice: number | null;    // сумма заказа
     deliveryCostForSeller: number | null;    // сумма за доставку
@@ -81,7 +82,8 @@ export interface IOrder extends Document {
 const OrderSchema = new Schema<IOrder>(
     {
         kmId: { type: String, required: true, unique: true, index: true },
-        code: { type: String, default: null, index: true },    // код заказа
+        code: { type: String },    // код заказа
+        type: { type: String },    // код заказа
         creationDate: { type: Number, required: false },    // дата заказа
         totalPrice: { type: Number, required: false },   // сумма заказа
         deliveryCostForSeller: { type: Number, required: false },    // сумма за доставку
@@ -96,7 +98,7 @@ const OrderSchema = new Schema<IOrder>(
 
         // Данные Клиента
         customer: {
-            id: { type: String, required: true, unique: true, index: true},
+            id: { type: String },
             name: { type: String },
             cellPhone: { type: String },
             firstName: { type: String },
