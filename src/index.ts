@@ -10,6 +10,7 @@ import { Env } from "@config/env"; // ← вот отсюда берём env
 import authRoutes from "@routers/auth.route";
 import productRoute from "@routers/product.route";
 import randomazeRoute from "@routers/randomaze-article.route";
+import accountingRoute from "@routers/accounting.route";
 import {authMiddleware} from "@middleware/auth";
 
 const app = express();
@@ -31,6 +32,7 @@ app.get("/", (_req: Request, res: Response) => {
 app.use("/auth", authRoutes);
 app.use("/products", authMiddleware, productRoute);
 app.use("/randomaze-article", authMiddleware, randomazeRoute);
+app.use("/", authMiddleware, accountingRoute);
 
 mongoose
     .connect(Env.MONGODB_URI)
