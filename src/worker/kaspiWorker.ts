@@ -1,34 +1,67 @@
 import axios from "axios";
 import { Env } from "@config/env";
-import {Order} from "@models/orders/Order";
+import { Order } from "@models/orders/Order";
 import mongoose from "mongoose";
-
-// за последние 24 часа
-// const to: number = Date.now(); // текущее время
-// const from: number = to - 24 * 60 * 60 * 1000; // 24 часа в миллисекундах
+import cron from "node-cron";
 
 const pretty = (obj: any) => JSON.stringify(obj, null, 2);
 
+// Небольшая задержка между запросами (мс)
+const SLEEP_MS = 150;
+// Включить ли подтягивание детальной информации о продукте для каждой позиции
+// (!) Если заказов много — лучше оставить false. Можно сделать флаг из .env
+const FETCH_PRODUCT_DETAILS = false;
+
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
 export const kaspiApi = axios.create({
-    baseURL: Env.KASPI_API_URL,
+    baseURL: Env.KASPI_API_URL, // например: https://kaspi.kz/shop/api/v2
     headers: {
         "X-Auth-Token": Env.KASPI_API_TOKEN,
         "Accept": "application/vnd.api+json; charset=UTF-8",
-        timeout: 20000,
     },
+    timeout: 20000,
 });
 
 const paramsSerializer = { serialize: (p: any) => new URLSearchParams(p).toString() };
 
-/** Собираем все заказы за октябрь указанного года (по умолчанию текущего) */
-export async function fetchAllOrdersForOctober(year = new Date().getFullYear()) {
-    // Казахстан (UTC+5). Берём [01 Oct 00:00:00 .. 01 Nov 00:00:00) - 1ms
-    const start = new Date(`${year}-10-01T00:00:00+05:00`).getTime();
-    const end   = new Date(`${year}-11-01T00:00:00+05:00`).getTime() - 1;
+/** Получить позиции заказа (orderentries) с пагинацией */
+async function fetchOrderEntries(orderId: string) {
+    const PAGE_SIZE = 100;
+    let page = 0;
+    const out: any[] = [];
 
-    const DAY = 24 * 60 * 60 * 1000;
-    const MAX_WINDOW = 14 * DAY;               // лимит Kaspi
-    const PAGE_SIZE = 100;                      // max по API
+    while (true) {
+        const params: Record<string, any> = {
+            "page[number]": page,
+            "page[size]": PAGE_SIZE,
+        };
+
+        await sleep(SLEEP_MS);
+        const { data } = await kaspiApi.get(`/orders/${orderId}/entries`, { params, paramsSerializer });
+
+        const entries: any[] = data?.data ?? data?.content ?? [];
+        out.push(...entries);
+
+        const hasNextLink = Boolean(data?.links?.next) || Boolean(data?.links?.pagination?.next);
+        if (entries.length < PAGE_SIZE || !hasNextLink) break;
+
+        page += 1;
+    }
+
+    return out;
+}
+
+/** Собираем все заказы за октябрь указанного года (по умолчанию — текущий) с позициями */
+export async function fetchAllOrders(year = new Date().getFullYear()) {
+    const now = Date.now();
+    const HOUR = 60 * 60 * 1000;
+
+    const start: number = now - HOUR; // час назад
+    const end: number = now;          // текущее время
+
+    const MAX_WINDOW: number = 14 * 24 * 60 * 60 * 1000; // можно оставить, не влияет
+    const PAGE_SIZE: number = 100;
     const all: any[] = [];
 
     let winFrom = start;
@@ -36,45 +69,64 @@ export async function fetchAllOrdersForOctober(year = new Date().getFullYear()) 
         const winTo = Math.min(winFrom + MAX_WINDOW - 1, end);
 
         let page = 0;
-        // проходим страницы в текущем окне
         while (true) {
             const params: Record<string, any> = {
-                'page[number]': page,
-                'page[size]': PAGE_SIZE,
-                'filter[orders][creationDate][$ge]': winFrom,
-                'filter[orders][creationDate][$le]': winTo,
-                // при желании можно фильтровать по статусу:
-                // 'filter[orders][state]': 'NEW' | 'DELIVERY' | 'KASPI_DELIVERY' | 'PICKUP' | 'SIGN_REQUIRED' | 'ARCHIVE'
+                "page[number]": page,
+                "page[size]": PAGE_SIZE,
+                "filter[orders][creationDate][$ge]": winFrom,
+                "filter[orders][creationDate][$le]": winTo,
+                // можно фильтровать по статусу:
+                // "filter[orders][state]": "NEW" | "DELIVERY" | "KASPI_DELIVERY" | "PICKUP" | "SIGN_REQUIRED" | "ARCHIVE"
             };
 
-            const { data } = await kaspiApi.get('/orders', { params, paramsSerializer });
+            await sleep(SLEEP_MS);
+            const { data } = await kaspiApi.get("/orders", { params, paramsSerializer });
 
-            // у разных версий API массив может быть в data или content
             const items: any[] = data?.data ?? data?.content ?? [];
-
-            for (let item of items) {
-                const orderItem = {
+            for (const item of items) {
+                // Нормализуем заказ
+                // 1) Тянем позиции заказа
+                const entries = await fetchOrderEntries(item.id);
+                const productsOrder = entries.map((entry: any) => {
+                    return {
+                        prId: entry.id,              // id позиции из Kaspi
+                        type: entry.type,                    // кол-во
+                        ...entry.attributes,
+                        product: {
+                            id: entry.relationships.product.data.id,
+                            type: entry.relationships.product.data.type,
+                            link: entry.relationships.product.links.related
+                        },
+                        deliveryPointOfService: {
+                            id: entry.relationships.deliveryPointOfService.data.id,
+                            type: entry.relationships.deliveryPointOfService.data.type,
+                            link: entry.relationships.deliveryPointOfService.links.related
+                        }
+                    }
+                });
+                const orderDoc = {
                     ...item,
-                    ...item.attributes,
-                }
+                    ...item.attributes,   // как у тебя было
+                    objects: productsOrder
+                };
 
-                const res = await Order.updateOne(
+                //
+                // 3) Пишем заказ с objects в Mongo
+                await Order.updateOne(
                     { kmId: item.id },
-                    { $set: orderItem },
+                    { $set: { ...orderDoc } },
                     { upsert: true }
                 );
+
+                all.push(orderDoc);
+                // Маленькая пауза между обработкой заказов (дополнительная защита)
+                await sleep(SLEEP_MS);
             }
 
-            all.push(...items);
-
-
-            // эвристики окончания пагинации:
             const hasNextLink =
                 Boolean(data?.links?.next) || Boolean(data?.links?.pagination?.next);
 
-            // если пришла неполная страница — дальше нет
             if (items.length < PAGE_SIZE || !hasNextLink) break;
-
             page += 1;
         }
 
@@ -85,15 +137,33 @@ export async function fetchAllOrdersForOctober(year = new Date().getFullYear()) 
     return all;
 }
 
-mongoose
-    .connect(Env.MONGODB_URI)
-    .then(() => {
-        console.log("✅ MongoDB connected");
-        fetchAllOrdersForOctober().then(list => console.dir(list.slice(0,3), {depth: null}));
-    })
-    .catch((err) => {
-        console.error("MongoDB connection error:", err);
-        process.exit(1);
-    });
-// единичный запуск для проверки:
-// fetchAllOrdersForOctober().then(list => console.dir(list.slice(0,3), {depth: null}));
+async function runJob() {
+    try {
+        console.log("🚀 Kaspi worker started:", new Date().toLocaleString());
+
+        // убедимся, что Mongo подключен
+        if (mongoose.connection.readyState === 0) {
+            await mongoose.connect(Env.MONGODB_URI);
+            console.log("✅ MongoDB connected");
+        }
+
+        await fetchAllOrders().then(() => console.log('✅ Все Загруженно!')) // <-- твоя функция, которая всё делает
+        console.log("✅ Kaspi worker finished:", new Date().toLocaleString());
+    } catch (err) {
+        console.error("⛔ Worker error:", err);
+    }
+}
+
+cron.schedule('* * * * *' , runJob, {timezone: "Asia/Almaty",}) ;
+
+// --- единичный запуск для проверки ---
+// mongoose
+//     .connect(Env.MONGODB_URI)
+//     .then(() => {
+//         console.log("✅ MongoDB connected");
+//         fetchAllOrders().then(list => console.log('✅ Все Загруженно!'));
+//     })
+//     .catch((err) => {
+//         console.error("MongoDB connection error:", err);
+//         process.exit(1);
+//     });

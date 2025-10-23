@@ -1,5 +1,36 @@
 import { Schema, model, Document } from "mongoose";
 
+export interface IOrderObject {
+    prId: string;                // id позиции из Kaspi
+    type: string;                    // кол-во
+    entryNumber?: number;                      // цена за штуку
+    deliveryCost?: number;                 // сумма по позиции
+    quantity?: number;                  // id товара
+    weight?: number;                // ссылка на товар
+    basePrice?: number;
+    totalPrice?: number;
+    unitType?: string;
+    category: {
+        code: string;
+        title: string;
+    };
+    offer: {
+        code: string;
+        name: string;
+    };
+    isImeiRequired: boolean;
+    product: {
+        id: string;
+        type: string;
+        link: string;
+    };
+    deliveryPointOfService: {
+        id: string;
+        type: string;
+        link: string;
+    }
+}
+
 export interface IOrder extends Document {
     // Идентификаторы
     kmId: string;               // UUID товара в МойСклад
@@ -77,7 +108,44 @@ export interface IOrder extends Document {
     creditTerm: number | null;
     deliveryMode: string | null;
     paymentMode: string | null;
+
+    objects: IOrderObject[];
 }
+
+// Подсхема для items (objects)
+const OrderObjectSchema = new Schema<IOrderObject>(
+    {
+        prId: { type: String },              // id позиции из Kaspi
+        type: { type: String },                   // кол-во
+        entryNumber: { type: Number },                     // цена за штуку
+        deliveryCost: { type: Number },                // сумма по позиции
+        quantity: { type: Number },                 // id товара
+        weight: { type: Number },              // ссылка на товар
+        basePrice: { type: Number },
+        totalPrice: { type: Number },
+        unitType: { type: String },
+        category: {
+            code: { type: String },
+            title: { type: String },
+        },
+        offer: {
+            code: { type: String },
+            name: { type: String },
+        },
+        isImeiRequired: { type: Boolean },
+        product: {
+            id: { type: String },
+            type:{ type: String },
+            link: { type: String },
+        },
+        deliveryPointOfService: {
+            id: { type: String },
+            type: { type: String },
+            link: { type: String },
+        }
+    },
+    { _id: false } // не создаём отдельные _id для поддокументов
+);
 
 const OrderSchema = new Schema<IOrder>(
     {
@@ -156,6 +224,7 @@ const OrderSchema = new Schema<IOrder>(
         creditTerm: { type: Number },
         deliveryMode: { type: String },
         paymentMode: { type: String },
+        objects: [OrderObjectSchema],
     },
     { timestamps: true, versionKey: false }
 );
