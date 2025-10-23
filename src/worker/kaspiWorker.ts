@@ -60,6 +60,7 @@ export async function fetchAllOrders(year = new Date().getFullYear()) {
     const start: number = now - HOUR; // час назад
     const end: number = now;          // текущее время
 
+
     const MAX_WINDOW: number = 14 * 24 * 60 * 60 * 1000; // можно оставить, не влияет
     const PAGE_SIZE: number = 100;
     const all: any[] = [];
@@ -153,7 +154,7 @@ async function runJob() {
         console.error("⛔ Worker error:", err);
     }
 }
-
+// звездочки это время
 cron.schedule('* * * * *' , runJob, {timezone: "Asia/Almaty",}) ;
 
 // --- единичный запуск для проверки ---
