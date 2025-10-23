@@ -1,6 +1,6 @@
 import axios from "axios";
 import { Env } from "@config/env";
-import {Product} from "@models/mysklad/Product";
+import {SkladProduct} from "@models/mysklad/SkladProduct";
 import mongoose from "mongoose";
 
 /**
@@ -157,7 +157,7 @@ async function main() {
                 }
 
                 // СРАЗУ сохраняем (upsert) — ключ по msId
-                const res = await Product.updateOne(
+                const res = await SkladProduct.updateOne(
                     { msId: pro.msId },
                     { $set: pro },
                     { upsert: true }
@@ -198,7 +198,7 @@ async function main() {
 
     console.log(`\n✅ Готово. Сводка: ${results.length} товаров.`);
     // Печатаем первые 5 для проверки
-    console.dir(results.slice(0, 5), { depth: null });
+    // console.dir(results.slice(0, 5), { depth: null });
 }
 
 mongoose

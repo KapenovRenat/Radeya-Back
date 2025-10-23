@@ -2,7 +2,7 @@ import { Schema, model, Document } from "mongoose";
 
 export type WarehouseKey = "astana" | "pavlodar" | "kostanay";
 
-export interface IProduct extends Document {
+export interface ISkladProduct extends Document {
     // Идентификаторы
     msId: string;               // UUID товара в МойСклад
     article?: string | null;    // product.article
@@ -37,7 +37,7 @@ export interface IProduct extends Document {
     updatedAt: Date;
 }
 
-const ProductSchema = new Schema<IProduct>(
+const SkladProductSchema = new Schema<ISkladProduct>(
     {
         msId: { type: String, required: true, unique: true, index: true },
 
@@ -62,7 +62,7 @@ const ProductSchema = new Schema<IProduct>(
 );
 
 // Удобная проекция при отдаче наружу
-ProductSchema.set("toJSON", {
+SkladProductSchema.set("toJSON", {
     transform: (_doc, ret: any) => {
         ret.id = ret._id;
         delete ret._id;
@@ -73,4 +73,4 @@ ProductSchema.set("toJSON", {
     },
 });
 
-export const Product = model<IProduct>("Product", ProductSchema);
+export const SkladProduct = model<ISkladProduct>("SkladProduct", SkladProductSchema);

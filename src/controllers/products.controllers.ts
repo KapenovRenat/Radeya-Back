@@ -1,6 +1,6 @@
 // src/controllers/product.controller.ts
 import { Request, Response } from "express";
-import {Product} from "@models/mysklad/Product";
+import {SkladProduct} from "@models/mysklad/SkladProduct";
 
 export async function listProducts(req: Request, res: Response) {
     try {
@@ -20,12 +20,12 @@ export async function listProducts(req: Request, res: Response) {
         }
 
         const [items, total] = await Promise.all([
-            Product.find(filter)
+            SkladProduct.find(filter)
                 .sort({ updatedAt: -1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),
-            Product.countDocuments(filter),
+            SkladProduct.countDocuments(filter),
         ]);
 
         res.json({
