@@ -57,8 +57,11 @@ export async function fetchAllOrders(year = new Date().getFullYear()) {
     const now = Date.now();
     const HOUR = 60 * 60 * 1000;
 
-    const start: number = now - HOUR; // час назад
-    const end: number = now;          // текущее время
+    // const start: number = now - HOUR; // час назад
+    // const end: number = now;          // текущее время
+
+    const start = new Date(`${year}-10-01T00:00:00+05:00`).getTime();
+    const end   = new Date(`${year}-11-01T00:00:00+05:00`).getTime() - 1;
 
 
     const MAX_WINDOW: number = 14 * 24 * 60 * 60 * 1000; // можно оставить, не влияет

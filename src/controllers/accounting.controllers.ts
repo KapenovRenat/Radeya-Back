@@ -43,12 +43,11 @@ export async function getAccounting(req: Request, res: Response) {
             const rows = await Order.find({
                 creationDate: { $gte: startTimestamp, $lt: endTimestamp },
             }).lean();
-            const dates = rows.map(r => new Date(r.creationDate));
             items.push({
                 ...accItem,
                 countOrders: rows.length || null,
                 sum: null,
-                dates
+                dates: rows
             })
         }
 
