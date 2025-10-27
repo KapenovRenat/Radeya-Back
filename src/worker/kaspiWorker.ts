@@ -3,6 +3,7 @@ import { Env } from "@config/env";
 import { Order } from "@models/orders/Order";
 import mongoose from "mongoose";
 import cron from "node-cron";
+import {getYearAndMonth} from "@utils/filterDate";
 
 const pretty = (obj: any) => JSON.stringify(obj, null, 2);
 
@@ -60,8 +61,8 @@ export async function fetchAllOrders(year = new Date().getFullYear()) {
     // const start: number = now - HOUR; // час назад
     // const end: number = now;          // текущее время
 
-    const start = new Date(`${year}-10-01T00:00:00+05:00`).getTime();
-    const end   = new Date(`${year}-11-01T00:00:00+05:00`).getTime() - 1;
+    const start = new Date(`${year}-10-14T00:00:00+05:00`).getTime();
+    const end   = new Date(`${year}-10-27T00:00:00+05:00`).getTime() - 1;
 
 
     const MAX_WINDOW: number = 14 * 24 * 60 * 60 * 1000; // можно оставить, не влияет
@@ -108,10 +109,12 @@ export async function fetchAllOrders(year = new Date().getFullYear()) {
                         }
                     }
                 });
+
                 const orderDoc = {
                     ...item,
                     ...item.attributes,   // как у тебя было
-                    objects: productsOrder
+                    objects: productsOrder,
+                    dateOrderCreatedSimple: getYearAndMonth(item.attributes.creationDate)
                 };
 
                 //
@@ -138,6 +141,7 @@ export async function fetchAllOrders(year = new Date().getFullYear()) {
     }
 
     console.log(`✅ Собрано заказов за октябрь ${year}:`, all.length);
+
     return all;
 }
 
@@ -158,16 +162,16 @@ async function runJob() {
     }
 }
 // звездочки это время
-cron.schedule('* * * * *' , runJob, {timezone: "Asia/Almaty",}) ;
+// cron.schedule('* * * * *' , runJob, {timezone: "Asia/Almaty",}) ;
 
 // --- единичный запуск для проверки ---
-// mongoose
-//     .connect(Env.MONGODB_URI)
-//     .then(() => {
-//         console.log("✅ MongoDB connected");
-//         fetchAllOrders().then(list => console.log('✅ Все Загруженно!'));
-//     })
-//     .catch((err) => {
-//         console.error("MongoDB connection error:", err);
-//         process.exit(1);
-//     });
+mongoose
+    .connect(Env.MONGODB_URI)
+    .then(() => {
+        console.log("✅ MongoDB connected");
+        fetchAllOrders().then(list => console.log('✅ Все Загруженно!'));
+    })
+    .catch((err) => {
+        console.error("MongoDB connection error:", err);
+        process.exit(1);
+    });

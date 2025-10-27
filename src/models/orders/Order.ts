@@ -108,7 +108,7 @@ export interface IOrder extends Document {
     creditTerm: number | null;
     deliveryMode: string | null;
     paymentMode: string | null;
-
+    dateOrderCreatedSimple: number[];
     objects: IOrderObject[];
 }
 
@@ -224,6 +224,7 @@ const OrderSchema = new Schema<IOrder>(
         creditTerm: { type: Number },
         deliveryMode: { type: String },
         paymentMode: { type: String },
+        dateOrderCreatedSimple: [],
         objects: [OrderObjectSchema],
     },
     { timestamps: true, versionKey: false }
