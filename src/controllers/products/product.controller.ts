@@ -131,13 +131,33 @@ export async function readXmlPriceKaspi(req: Request, res: Response) {
                 storeOrder = first['@_preOrder'] ? String(first['@_preOrder']) : undefined;
             }
 
-            // 👉 тут получаем публичную ссылку с МойСклад
-            let previewImgUrl: string | undefined;
-            try {
-                previewImgUrl = await getMsPermanentImageUrlByArticle(article);
-            } catch (e) {
-                console.warn(`Не удалось получить картинку из МС для артикула ${article}:`, e);
+            // 🔍 Проверяем, есть ли уже товар в базе и у него previewImgUrl
+            const existing = await Product.findOne(
+                { article },
+                { previewImgUrl: 1, _id: 0 },
+            ).lean();
+
+            let previewImgUrl: string | undefined = existing?.previewImgUrl;
+
+            // ⚙️ Если ссылки ещё нет — делаем запрос к МойСклад
+            if (!previewImgUrl) {
+                try {
+                    previewImgUrl = await getMsPermanentImageUrlByArticle(article);
+                    await new Promise((res) => setTimeout(res, 500)); // пауза между запросами
+                } catch (e) {
+                    console.warn(`❌ Не удалось получить картинку из МС для артикула ${article}:`, e);
+                }
+            } else {
+                console.log(`⏩ Пропускаем ${article} — ссылка уже есть`);
             }
+
+            // 👉 тут получаем публичную ссылку с МойСклад
+            // let previewImgUrl: string | undefined;
+            // try {
+            //     previewImgUrl = await getMsPermanentImageUrlByArticle(article);
+            // } catch (e) {
+            //     console.warn(`Не удалось получить картинку из МС для артикула ${article}:`, e);
+            // }
 
             products.push({
                 article: article, // у тебя в схеме lowercase: true
@@ -185,5 +205,44 @@ export async function readXmlPriceKaspi(req: Request, res: Response) {
     } catch (err) {
         console.error("❌ Ошибка чтения XML Price Kaspi:", err);
         // res.status(500).json({ message: "❌ Ошибка чтения XML Price Kaspi" });
+    }
+}
+
+export async function listProductKaspi(req: Request, res: Response) {
+    try {
+        const page  = Math.max(1, Number(req.body.page) || 1);
+        const limit = Math.min(100, Number(req.body.limit) || 20);
+        const search = String(req.body.search || "").trim();
+
+        const filter: any = {};
+
+        // если передана строка поиска — фильтруем по имени
+        if (search) {
+            // filter.name = { $regex: search, $options: "i" }; // регистронезависимый поиск
+            filter.$or = [
+                { name: { $regex: search, $options: "i" } },
+                { article: { $regex: search, $options: "i" } },
+            ];
+        }
+
+        const [items, total] = await Promise.all([
+            Product.find(filter)
+                .sort({ updatedAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            Product.countDocuments(filter),
+        ]);
+
+        res.json({
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit),
+            items,
+        });
+    } catch (err) {
+        console.error("❌ Ошибка получения продуктов Каспи:", err);
+        res.status(500).json({ message: "Ошибка сервера" });
     }
 }
