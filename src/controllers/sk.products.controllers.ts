@@ -21,7 +21,7 @@ export async function listProducts(req: Request, res: Response) {
 
         const [items, total] = await Promise.all([
             SkladProduct.find(filter)
-                .sort({ updatedAt: -1 })
+                .sort({ updatedAt: -1, _id: -1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),

@@ -4,6 +4,8 @@ import { XMLParser } from 'fast-xml-parser';
 import {IProduct} from "@models/product/Product";
 import { Env } from "@config/env";
 import {Product} from "@models/product/Product";
+import {Order} from "@models/orders/Order";
+import {CodeCategory} from "@models/product/features/CodeCategory";
 
 const KASPI_XML_URL = Env.KASPI_XML_KASPI_PRICE_URL as string;
 const BASE = Env.MOYSKLAD_BASE || "https://api.moysklad.ru/api/remap/1.2";
@@ -20,6 +22,17 @@ const ms = axios.create({
         Authorization: `Basic ${basic}`,
     },
 });
+
+export const kaspiApi = axios.create({
+    baseURL: Env.KASPI_API_URL, // например: https://kaspi.kz/shop/api/v2
+    headers: {
+        "X-Auth-Token": Env.KASPI_API_TOKEN,
+        "Accept": "application/vnd.api+json; charset=UTF-8",
+    },
+    timeout: 20000,
+});
+
+
 
 /**
  * Возвращает публичную ссылку на миниатюру товара из МойСклад по артикулу.
@@ -227,7 +240,7 @@ export async function listProductKaspi(req: Request, res: Response) {
 
         const [items, total] = await Promise.all([
             Product.find(filter)
-                .sort({ updatedAt: -1 })
+                .sort({ updatedAt: -1, _id: -1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),
@@ -243,6 +256,94 @@ export async function listProductKaspi(req: Request, res: Response) {
         });
     } catch (err) {
         console.error("❌ Ошибка получения продуктов Каспи:", err);
+        res.status(500).json({ message: "Ошибка сервера" });
+    }
+}
+
+
+// получаем поля для заполнения
+
+const kaspiApiDef = axios.create({
+    baseURL: "https://kaspi.kz/shop/api",
+    timeout: 20000,
+    headers: {
+        Accept: "application/json",
+        "X-Auth-Token": Env.KASPI_API_TOKEN,
+    },
+});
+
+export async function getCategoriesProductKaspi(req: Request, res: Response) {
+    try {
+        const page  = Math.max(1, Number(req.body.page) || 1);
+        const limit = Math.min(100, Number(req.body.limit) || 20);
+        const search = String(req.body.search || "").trim();
+
+        const filter: any = {};
+
+        // если передана строка поиска — фильтруем по имени
+        if (search) {
+            // filter.name = { $regex: search, $options: "i" }; // регистронезависимый поиск
+            filter.$or = [
+                { title: { $regex: search, $options: "i" } }
+            ];
+        }
+
+        const [items, total] = await Promise.all([
+            CodeCategory.find(filter)
+                .sort({ updatedAt: -1, _id: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
+            CodeCategory.countDocuments(filter),
+        ]);
+
+        res.json({
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit),
+            items,
+        });
+    } catch (err) {
+        console.error("❌ Ошибка получения категорий Каспи:", err);
+        res.status(500).json({ message: "Ошибка сервера" });
+    }
+}
+
+export async function getFieldCategoryKaspiProduct(req: Request, res: Response) {
+    try {
+        const code  = req.body.categoryCode;
+        const resAttributes = await kaspiApiDef.get('/products/classification/attributes', {
+            params: { c: code }, // <-- передаём код категории
+        });
+        const attributes = resAttributes.data;
+        const fields = [];
+
+        if (attributes && attributes.length > 0) {
+            for (const attr of attributes) {
+                try {
+                    const resAttributesValues = await kaspiApiDef.get('/products/classification/attribute/values', {
+                        params: { c: code, a: attr.code },
+                    });
+
+                    const newAttr = {
+                        ...attr,
+                        values: resAttributesValues.data
+                    }
+
+                    fields.push(newAttr);
+                    await new Promise((res) => setTimeout(res, 500));
+                } catch (err) {
+                    console.warn(`❌ Ошибка получения!`, err);
+                }
+            }
+        }
+        res.json({
+            fields
+        });
+
+    } catch (err) {
+        console.error("❌ Формирования Полей для товара:", err);
         res.status(500).json({ message: "Ошибка сервера" });
     }
 }

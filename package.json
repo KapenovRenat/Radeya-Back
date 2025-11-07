@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "ms:raw": "tsx src/worker/mysklad.ts",
-    "worker:kaspi": "tsx src/worker/kaspiWorker.ts"
+    "worker:kaspi": "tsx src/worker/kaspiWorker.ts",
+    "kaspi:categories": "tsx src/worker/kaspiCategories.ts"
   },
   "repository": {
     "type": "git",
