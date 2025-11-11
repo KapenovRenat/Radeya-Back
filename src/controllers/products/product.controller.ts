@@ -6,6 +6,7 @@ import { Env } from "@config/env";
 import {Product} from "@models/product/Product";
 import {Order} from "@models/orders/Order";
 import {CodeCategory} from "@models/product/features/CodeCategory";
+import {fixPrefix, uploadManyFilesToYandex} from "@utils/upload-yandex";
 
 const KASPI_XML_URL = Env.KASPI_XML_KASPI_PRICE_URL as string;
 const BASE = Env.MOYSKLAD_BASE || "https://api.moysklad.ru/api/remap/1.2";
@@ -31,7 +32,6 @@ export const kaspiApi = axios.create({
     },
     timeout: 20000,
 });
-
 
 
 /**
@@ -344,6 +344,62 @@ export async function getFieldCategoryKaspiProduct(req: Request, res: Response) 
 
     } catch (err) {
         console.error("❌ Формирования Полей для товара:", err);
+        res.status(500).json({ message: "Ошибка сервера" });
+    }
+}
+
+export async function createKaspiProduct(req: Request, res: Response) {
+    try {
+        const { categoryCode } = req.body;
+        const categoryAttr = JSON.parse(req.body.categoryAttr);
+        // получаем все цвета и их файлы
+        const colorsJson = JSON.parse(req.body.colors || "[]") as {
+            idx: number;
+            code: string;
+        }[];
+
+        const title = categoryAttr.find((x: any) => x.code === 'title');
+        const files = (req as any).files as Express.Multer.File[] || [];
+
+        // склеиваем цвета с их файлами
+        const colors = colorsJson.map((color: any, index: number) => {
+            const filesForColor = files.filter(
+                (f) => f.fieldname === `images_${index}`
+            );
+
+            return {
+                code: color.code,
+                files: filesForColor,
+            };
+        });
+
+        const basePrefix = `kaspi/${fixPrefix(categoryCode)}/${Date.now()}`;
+
+        let colorsLinks = [];
+
+        for (const color of colors) {
+            if (color.files.length === 0) {
+                colorsLinks.push({
+                    code: color.code,
+                    kaspiImages: []
+                });
+                continue;
+            }
+
+            const prefix = `${basePrefix.trim()}/${title ? title.selected : 'noname'}/color-${color.code}`.trim();
+            const urls = await uploadManyFilesToYandex(color.files, prefix);
+
+            colorsLinks.push({
+                code: color.code,
+                kaspiImages: urls
+            });
+        }
+
+        return {
+            msg: 'STATUS OK'
+        }
+    } catch (e) {
+        console.error("❌ Не удалось создать товар:", e);
         res.status(500).json({ message: "Ошибка сервера" });
     }
 }

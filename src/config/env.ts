@@ -17,7 +17,12 @@ export const Env = {
     MOYSKLAD_PASSWORD: process.env.MOYSKLAD_PASSWORD,
     KASPI_API_TOKEN:process.env.KASPI_API_TOKEN,
     KASPI_API_URL:process.env.KASPI_API_URL,
-    KASPI_XML_KASPI_PRICE_URL: process.env.KASPI_XML_KASPI_PRICE_URL || ""
+    KASPI_XML_KASPI_PRICE_URL: process.env.KASPI_XML_KASPI_PRICE_URL || "",
+    YANDEX_S3_REGION: process.env.YANDEX_S3_REGION || "",
+    YANDEX_S3_BUCKET: process.env.YANDEX_S3_BUCKET || "",
+    YANDEX_S3_ENDPOINT: process.env.YANDEX_S3_ENDPOINT || "",
+    YANDEX_S3_ACCESS_KEY_ID: process.env.YANDEX_S3_ACCESS_KEY_ID || "",
+    YANDEX_S3_SECRET_ACCESS_KEY: process.env.YANDEX_S3_SECRET_ACCESS_KEY || "",
 };
 
 // Проверим важные переменные при старте
