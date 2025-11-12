@@ -4,7 +4,7 @@ import {SkladProduct} from "@models/mysklad/SkladProduct";
 // буквы, которые нельзя использовать как вторую
 const excludedLetters = ["G", "J", "I", "L", "Y"];
 
-function getRandomSecondLetter(first: string): string {
+export function getRandomSecondLetter(first: string): string {
     const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
     const allowed = letters.filter(
         (l) => l !== first && !excludedLetters.includes(l)
@@ -12,12 +12,12 @@ function getRandomSecondLetter(first: string): string {
     return allowed[Math.floor(Math.random() * allowed.length)];
 }
 
-function getRandomDigits(): string {
+export function getRandomDigits(): string {
     return String(Math.floor(Math.random() * 1000)).padStart(3, "0");
 }
 
 /** Проверяем, есть ли в БД совпадение по артикулу с префиксом */
-async function existsInDb(article: string) {
+export async function existsInDb(article: string) {
     const regex = new RegExp(`^${article}(?:-|$)`, "i"); // совпадение MB329 или MB329-1
     return await SkladProduct.exists({ article: { $regex: regex } });
 }

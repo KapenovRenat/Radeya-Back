@@ -7,6 +7,7 @@ import {Product} from "@models/product/Product";
 import {Order} from "@models/orders/Order";
 import {CodeCategory} from "@models/product/features/CodeCategory";
 import {fixPrefix, uploadManyFilesToYandex} from "@utils/upload-yandex";
+import {existsInDb, getRandomDigits, getRandomSecondLetter} from "@controllers/randomaze-article.controllers";
 
 const KASPI_XML_URL = Env.KASPI_XML_KASPI_PRICE_URL as string;
 const BASE = Env.MOYSKLAD_BASE || "https://api.moysklad.ru/api/remap/1.2";
@@ -268,9 +269,10 @@ const kaspiApiDef = axios.create({
     timeout: 20000,
     headers: {
         Accept: "application/json",
-        "X-Auth-Token": Env.KASPI_API_TOKEN,
+        "X-Auth-Token": Env.KASPI_API_TOKEN
     },
 });
+
 
 export async function getCategoriesProductKaspi(req: Request, res: Response) {
     try {
@@ -320,6 +322,7 @@ export async function getFieldCategoryKaspiProduct(req: Request, res: Response) 
         const fields = [];
 
         if (attributes && attributes.length > 0) {
+            // console.log(attributes);
             for (const attr of attributes) {
                 try {
                     const resAttributesValues = await kaspiApiDef.get('/products/classification/attribute/values', {
@@ -348,6 +351,8 @@ export async function getFieldCategoryKaspiProduct(req: Request, res: Response) 
     }
 }
 
+const fieldExclusion = ['title', 'description', 'color', 'korobs'];
+
 export async function createKaspiProduct(req: Request, res: Response) {
     try {
         const { categoryCode } = req.body;
@@ -357,6 +362,10 @@ export async function createKaspiProduct(req: Request, res: Response) {
             idx: number;
             code: string;
         }[];
+
+        const categoryAttrWithoutColor =  categoryAttr.filter((x: any) => {
+            if (x.code.split('*').pop()?.trim() !== 'Color') return x;
+        });
 
         const title = categoryAttr.find((x: any) => x.code === 'title');
         const files = (req as any).files as Express.Multer.File[] || [];
@@ -387,17 +396,125 @@ export async function createKaspiProduct(req: Request, res: Response) {
             }
 
             const prefix = `${basePrefix.trim()}/${title ? title.selected : 'noname'}/color-${color.code}`.trim();
-            const urls = await uploadManyFilesToYandex(color.files, prefix);
+            const urls: any = await uploadManyFilesToYandex(color.files, prefix);
 
             colorsLinks.push({
                 code: color.code,
-                kaspiImages: urls
+                kaspiImages: urls.map((url: any) => {
+                    return {
+                        url
+                    }
+                })
             });
         }
 
-        return {
-            msg: 'STATUS OK'
+        const firstLetter = title.selected[0].toUpperCase();
+        const secondLetter = getRandomSecondLetter(firstLetter);
+        const prefix = `${firstLetter}${secondLetter}`;
+
+        const result: string[] = [];
+
+        while (result.length < colorsLinks.length) {
+            const digits = getRandomDigits();
+            const candidate = `${prefix}${digits}`;
+
+            // проверка дубликатов в текущей генерации
+            if (result.includes(candidate)) continue;
+
+            // проверка в базе по regex (например, MB329 и MB329-1)
+            const exists = await existsInDb(candidate);
+            if (!exists) {
+                let categoryKM: any = {
+                    sku: candidate,
+                    brand: 'RADEYA',
+                    category: categoryCode,
+                    attributes: []
+                }
+                let otherAttr = [];
+
+                for (const attr of categoryAttrWithoutColor) {
+                    if (attr.code === 'title') {
+                        categoryKM = {
+                            title: attr.selected,
+                            ...categoryKM
+                        }
+                    }
+
+                    if (attr.code === 'description') {
+                        categoryKM = {
+                            description: attr.selected,
+                            ...categoryKM
+                        }
+                    }
+
+
+                    if (attr.multiValued) {
+                        otherAttr.push({code: attr.code, value: attr.selected.map((item: any) => item.code)});
+                    } else {
+                        otherAttr.push({code: attr.code, value: typeof attr.selected === 'object' ? [attr.selected.code] : attr.selected});
+                    }
+                }
+
+                categoryKM = {
+                    ...categoryKM,
+                    attributes: otherAttr.filter((x: any) => !fieldExclusion.includes(x.code))
+                }
+                result.push(categoryKM);
+            } else {
+                // если уже есть в базе — перегенерим цифры, но оставляем тот же prefix
+                continue;
+            }
         }
+
+        const mappingResult = result.map((item: any, index: number) => {
+            const colorCode = categoryAttr.find((x: any) => {
+                if (x.code.split('*').pop()?.trim() === 'Color') return x;
+            })
+            const color = colorsLinks[index];
+            let attributes = item.attributes;
+
+            return {
+                ...item,
+                attributes: [...attributes, {code: colorCode.code, value: color.code}],
+                images: color.kaspiImages
+            }
+        });
+
+        const productSaveDB = mappingResult.map((p) => ({
+            updateOne: {
+                filter: { article: p.sku },
+                update: {
+                    $set: {
+                        article: p.sku,
+                        name: p.title,
+                        isActiveKaspi: 'no',
+                        previewImgUrl: p.images && p.images.length > 0 ? p.images[0].url : '',
+                        imagesKM: p.images,
+                        ...p // 👈 пишем картинку из МС
+                    },
+                },
+                upsert: true,
+            },
+        }));
+        await Product.bulkWrite(productSaveDB);
+        const kaspiResponse = await kaspiApiDef.post('/products/import', JSON.stringify(mappingResult), {headers: {"Content-Type": "text/plain; charset=utf-8"}});
+        const productUpdate = mappingResult.map((p) => ({
+            updateOne: {
+                filter: { article: p.sku },
+                update: {
+                    $set: {
+                        uniqueCode: kaspiResponse.data.code,
+                        status: kaspiResponse.data.status
+                    },
+                },
+                upsert: true,
+            },
+        }));
+        await Product.bulkWrite(productUpdate);
+
+        res.json({
+            data: mappingResult
+        });
     } catch (e) {
         console.error("❌ Не удалось создать товар:", e);
         res.status(500).json({ message: "Ошибка сервера" });

@@ -15,37 +15,49 @@ const s3 = new S3Client({
 export async function uploadFileToYandex(
     file: Express.Multer.File,
     keyPrefix: string
-): Promise<string> {
-    const ext = file.originalname.split(".").pop() || "bin";
-    const key = `${keyPrefix}/${randomUUID()}.${ext}`;
+): Promise<string | null> {
+    try {
+        const ext = file.originalname.split(".").pop() || "bin";
+        const key = `${keyPrefix}/${randomUUID()}.${ext}`;
 
-    await s3.send(
-        new PutObjectCommand({
-            Bucket: Env.YANDEX_S3_BUCKET,
-            Key: key,
-            Body: file.buffer,          // у тебя memoryStorage, так что buffer есть
-            ContentType: file.mimetype,
-            ACL: "public-read",         // если бакет публичный
-        })
-    );
+        await s3.send(
+            new PutObjectCommand({
+                Bucket: Env.YANDEX_S3_BUCKET,
+                Key: key,
+                Body: file.buffer,          // у тебя memoryStorage, так что buffer есть
+                ContentType: file.mimetype,
+                ACL: "public-read",         // если бакет публичный
+            })
+        );
 
-    // базовый публичный URL (если без CDN/своего домена)
-    return `${Env.YANDEX_S3_ENDPOINT}/${Env.YANDEX_S3_BUCKET}/${key}`;
+        // базовый публичный URL (если без CDN/своего домена)
+        return `${Env.YANDEX_S3_ENDPOINT}/${Env.YANDEX_S3_BUCKET}/${key}`;
+    } catch (e) {
+        console.log('Ошибка загрузки файла на Яндекс: ', e);
+        return null
+    }
 }
 
 /** Загрузка нескольких файлов и возврат массива URL */
 export async function uploadManyFilesToYandex(
     files: Express.Multer.File[],
     keyPrefix: string
-): Promise<string[]> {
-    const urls: string[] = [];
+): Promise<string[] | null> {
+    try {
+        const urls: string[] = [];
 
-    for (const file of files) {
-        const url = await uploadFileToYandex(file, keyPrefix);
-        urls.push(url);
+        for (const file of files) {
+            const url = await uploadFileToYandex(file, keyPrefix);
+            if (typeof url === "string") {
+                urls.push(url);
+            }
+        }
+
+        return urls;
+    } catch (e) {
+        console.log('Ошибка загрузки файлов на Яндекс: ', e);
+        return null;
     }
-
-    return urls;
 }
 
 export function fixPrefix(prefix: any) {
