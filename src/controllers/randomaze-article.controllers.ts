@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import {SkladProduct} from "@models/mysklad/SkladProduct";
+import firstLetterToEng from "@utils/firstLetterToEng";
 
 // буквы, которые нельзя использовать как вторую
 const excludedLetters = ["G", "J", "I", "L", "Y"];
@@ -26,7 +27,7 @@ export async function RandomArticle(req: Request, res: Response) {
     try {
         const { name, count } = req.body;
 
-        const firstLetter = name[0].toUpperCase();
+        const firstLetter = firstLetterToEng(name[0].toUpperCase());
         const secondLetter = getRandomSecondLetter(firstLetter);
         const prefix = `${firstLetter}${secondLetter}`;
 

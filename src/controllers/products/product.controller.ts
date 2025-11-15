@@ -8,6 +8,7 @@ import {Order} from "@models/orders/Order";
 import {CodeCategory} from "@models/product/features/CodeCategory";
 import {fixPrefix, uploadManyFilesToYandex} from "@utils/upload-yandex";
 import {existsInDb, getRandomDigits, getRandomSecondLetter} from "@controllers/randomaze-article.controllers";
+import firstLetterToEng from "@utils/firstLetterToEng";
 
 const KASPI_XML_URL = Env.KASPI_XML_KASPI_PRICE_URL as string;
 const BASE = Env.MOYSKLAD_BASE || "https://api.moysklad.ru/api/remap/1.2";
@@ -408,7 +409,7 @@ export async function createKaspiProduct(req: Request, res: Response) {
             });
         }
 
-        const firstLetter = title.selected[0].toUpperCase();
+        const firstLetter = firstLetterToEng(title.selected[0].toUpperCase());
         const secondLetter = getRandomSecondLetter(firstLetter);
         const prefix = `${firstLetter}${secondLetter}`;
 
@@ -512,9 +513,21 @@ export async function createKaspiProduct(req: Request, res: Response) {
         }));
         await Product.bulkWrite(productUpdate);
 
-        res.json({
-            data: mappingResult
-        });
+        if (kaspiResponse.data.status === 'UPLOADED') {
+            const kaspiCheckProduct = await kaspiApiDef.get('/products/import/result', {
+                params: { i: kaspiResponse.data.code }, // <-- передаём код категории
+            });
+
+            return res.status(200).json({
+                message: kaspiResponse.data.status,
+                data: kaspiCheckProduct.data
+            });
+        } else {
+            res.status(200).json({
+                message: kaspiResponse.data
+            });
+        }
+
     } catch (e) {
         console.error("❌ Не удалось создать товар:", e);
         res.status(500).json({ message: "Ошибка сервера" });
