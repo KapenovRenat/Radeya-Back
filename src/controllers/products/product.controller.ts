@@ -524,3 +524,8 @@ export async function createKaspiProduct(req: Request, res: Response) {
         res.status(500).json({ message: "Ошибка сервера" });
     }
 }
+
+
+export async function getProduct(req: Request, res: Response) {
+
+}
