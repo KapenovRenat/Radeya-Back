@@ -204,15 +204,6 @@ export async function readXmlPriceKaspi(req: Request, res: Response) {
         }));
 
         const result = await Product.bulkWrite(ops);
-        // // console.log('Kaspi XML sync done:', {
-        // //     totalFromXml: products.length,
-        // //     matched: result.matchedCount,
-        // //     modified: result.modifiedCount,
-        // //     upserted: result.upsertedCount,
-        // // });
-        //
-        // console.log('Всего товаров из XML:', products.length);
-        // console.log(products);
 
         res.json({
             message: `✅Список товар Обновлен с Каспи! Кол-во ${products.length}`
