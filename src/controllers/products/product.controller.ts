@@ -8,7 +8,7 @@ import {Order} from "@models/orders/Order";
 import {CodeCategory} from "@models/product/features/CodeCategory";
 import {fixPrefix, uploadManyFilesToYandex} from "@utils/upload-yandex";
 import {existsInDb, getRandomDigits, getRandomSecondLetter} from "@controllers/randomaze-article.controllers";
-import firstLetterToEng from "@utils/firstLetterToEng";
+import {translit, firstLetterToEng} from "@utils/firstLetterToEng";
 
 const KASPI_XML_URL = Env.KASPI_XML_KASPI_PRICE_URL as string;
 const BASE = Env.MOYSKLAD_BASE || "https://api.moysklad.ru/api/remap/1.2";
@@ -387,7 +387,12 @@ export async function createKaspiProduct(req: Request, res: Response) {
                 continue;
             }
 
-            const prefix = `${basePrefix.trim()}/${title ? title.selected : 'noname'}/color-${color.code}`.trim();
+            // перевод на англ
+
+            // const colorEng =
+            // const titleEng =
+
+            const prefix = `${basePrefix.trim()}/${title ? translit(title.selected) : 'noname'}/color-${translit(color.code)}`.trim();
             const urls: any = await uploadManyFilesToYandex(color.files, prefix);
 
             colorsLinks.push({
@@ -405,13 +410,17 @@ export async function createKaspiProduct(req: Request, res: Response) {
         const prefix = `${firstLetter}${secondLetter}`;
 
         const result: string[] = [];
+        const articles: string[] = [];
 
         while (result.length < colorsLinks.length) {
             const digits = getRandomDigits();
             const candidate = `${prefix}${digits}`;
 
             // проверка дубликатов в текущей генерации
-            if (result.includes(candidate)) continue;
+            if (articles.includes(candidate)) {
+                console.log(articles.includes(candidate));
+                continue
+            };
 
             // проверка в базе по regex (например, MB329 и MB329-1)
             const exists = await existsInDb(candidate);
@@ -451,6 +460,7 @@ export async function createKaspiProduct(req: Request, res: Response) {
                     ...categoryKM,
                     attributes: otherAttr.filter((x: any) => !fieldExclusion.includes(x.code))
                 }
+                articles.push(candidate);
                 result.push(categoryKM);
             } else {
                 // если уже есть в базе — перегенерим цифры, но оставляем тот же prefix

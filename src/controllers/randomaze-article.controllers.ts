@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import {SkladProduct} from "@models/mysklad/SkladProduct";
-import firstLetterToEng from "@utils/firstLetterToEng";
+import {firstLetterToEng} from "@utils/firstLetterToEng";
 
 // буквы, которые нельзя использовать как вторую
 const excludedLetters = ["G", "J", "I", "L", "Y"];
@@ -19,8 +19,13 @@ export function getRandomDigits(): string {
 
 /** Проверяем, есть ли в БД совпадение по артикулу с префиксом */
 export async function existsInDb(article: string) {
-    const regex = new RegExp(`^${article}(?:-|$)`, "i"); // совпадение MB329 или MB329-1
-    return await SkladProduct.exists({ article: { $regex: regex } });
+    const prefix = article.slice(0, 2);
+
+    const regex = new RegExp(`^${prefix}`, 'i'); // всё, что начинается с "MB"
+
+    return SkladProduct.exists({
+        article: { $regex: regex }
+    });
 }
 
 export async function RandomArticle(req: Request, res: Response) {
