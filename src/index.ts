@@ -1,6 +1,6 @@
 // src/index.ts
 import "express-async-errors";
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import helmet from "helmet";
@@ -22,7 +22,7 @@ app.use(cors({
     credentials: true,          // важное!http://localhost:3000/auth
 }));
 app.use(morgan("dev"));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(cookieParser());
 
 // test route
@@ -35,6 +35,14 @@ app.use("/products", authMiddleware, productRoute);
 app.use("/randomaze-article", authMiddleware, randomazeRoute);
 app.use("/", authMiddleware, accountingRoute);
 app.use("/mysklad", authMiddleware, myskladRoute);
+
+// Глобальный JSON error handler — всегда возвращает JSON, не HTML
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    console.error("[Global Error]", err);
+    res.status(err.status ?? 500).json({
+        error: err.message ?? "Internal Server Error",
+    });
+});
 
 mongoose
     .connect(Env.MONGODB_URI)

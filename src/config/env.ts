@@ -17,6 +17,7 @@ export const Env = {
     MOYSKLAD_PASSWORD: process.env.MOYSKLAD_PASSWORD,
     KASPI_API_TOKEN:process.env.KASPI_API_TOKEN,
     KASPI_API_URL:process.env.KASPI_API_URL,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
 };
 
 // Проверим важные переменные при старте

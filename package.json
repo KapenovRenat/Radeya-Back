@@ -22,6 +22,7 @@
   "homepage": "https://github.com/KapenovRenat/Radeya-Back#readme",
   "description": "",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
     "axios": "^1.12.2",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
@@ -33,6 +34,8 @@
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "mongoose": "^8.19.1",
     "morgan": "^1.10.1",
     "node-cron": "^4.2.1",

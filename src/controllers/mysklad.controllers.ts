@@ -137,9 +137,13 @@ export async function getSalesHistory(req: Request, res: Response) {
     const stockParams: Record<string, any> = { stockMode: "all" };
     if (supplierFilter) stockParams.filter = supplierFilter;
 
-    // Ассортимент — все товары/варианты каталога (базовый список)
-    const assortmentParams: Record<string, any> = { type: "product,variant" };
-    if (supplierFilter) assortmentParams.filter = supplierFilter;
+    // Ассортимент — все товары/варианты каталога (базовый список, без архивных)
+    const assortmentFilters: string[] = ["archived=false"];
+    if (supplierFilter) assortmentFilters.push(supplierFilter);
+    const assortmentParams: Record<string, any> = {
+        type: "product,variant",
+        filter: assortmentFilters.join(";"),
+    };
 
     const [profitRows, stockRows, assortmentRows] = await Promise.all([
         fetchAll("/report/profit/byproduct", profitParams),
@@ -190,9 +194,10 @@ export async function getSalesHistory(req: Request, res: Response) {
 
         return {
             productId,
-            name:     s?.name ?? profit?.assortment?.name ?? null,
-            code:     s?.code ?? profit?.assortment?.code ?? null,
-            imageUrl: s?.image?.miniature?.href ?? profit?.assortment?.image?.miniature?.href ?? null,
+            name:     a.name ?? profit?.assortment?.name ?? null,
+            code:     a.code ?? profit?.assortment?.code ?? null,
+            imageUrl: a.image?.miniature?.href ?? profit?.assortment?.image?.miniature?.href ?? null,
+            volume:   a.volume ?? null,
             sellQty,
             sellSum,
             costSum,
