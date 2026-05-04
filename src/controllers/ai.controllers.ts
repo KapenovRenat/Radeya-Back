@@ -10,7 +10,6 @@ export async function aiPurchaseAnalysis(req: Request, res: Response) {
         params: {
             truckVol: number;
             forecastDays: number;
-            forecastQty: number;
             deliveryDays: number;
             destination: string;
         };
@@ -22,15 +21,17 @@ export async function aiPurchaseAnalysis(req: Request, res: Response) {
         const daysLeft = item.salesPerDay > 0
             ? +(item.available / item.salesPerDay).toFixed(1)
             : null;
+        // Убираем кавычки из названий чтобы не ломать JSON в ответе
+        const name = (item.name ?? "—").replace(/"/g, "'").replace(/\n/g, " ");
         return [
-            `"${item.name ?? "—"}"`,
-            `код:${item.code ?? "—"}`,
-            `объём:${item.volume ?? 0}м³`,
-            `прод/день:${item.salesPerDay}`,
-            `доступно:${item.available}`,
-            `дней:${daysLeft ?? "∞"}`,
-            `рент-ть:${item.profitPct ?? 0}%`,
-        ].join(" | ");
+            name,
+            item.code ?? "—",
+            `${item.volume ?? 0}м³`,
+            `${item.salesPerDay}/д`,
+            `д:${item.available}`,
+            `${daysLeft ?? "∞"}дн`,
+            `${item.profitPct ?? 0}%`,
+        ].join("|");
     }).join("\n");
 
     const editedBlock = editedItems?.length
@@ -48,18 +49,23 @@ export async function aiPurchaseAnalysis(req: Request, res: Response) {
 - Куда: ${params.destination}
 - Срок доставки: ${params.deliveryDays} дней
 - Период между заказами: ${params.forecastDays} дней
-- Объём машины: ${params.truckVol} м³ — это общий лимит на весь заказ
+- Объём машины: ${params.truckVol} м³ — это жёсткий лимит
 
 ЛОГИКА РАСЧЁТА:
-1. Рассчитай нужное кол-во каждого товара: прод/день × (${params.deliveryDays} + ${params.forecastDays}) - доступно (минимум 1)
-2. Рассчитай объём каждой позиции: кол-во × объём_товара (если объём = 0 — объём позиции считай нулевым)
-3. Сложи суммарный объём всех позиций
-4. Если суммарный объём > ${params.truckVol} м³ — урежь количества, начиная с наименее приоритетных товаров (низкая маржа, много дней остатка), пока суммарный объём не войдёт в ${params.truckVol} м³
-5. Товары с объёмом = 0 означают что объём неизвестен. Включай их в список закупки если нужны по продажам, но не учитывай их объём при подсчёте суммарного объёма машины. В поле totalItemVolume для таких товаров ставь null, в comment пиши "объём не указан"
-6. В поле totalVolume итогового JSON укажи суммарный объём заказа
+1. Приоритет товаров: сначала самые срочные (мало дней остатка), при равенстве — выше маржа
+2. Для товаров с известным объёмом (объём > 0):
+   - Рассчитай нужное кол-во: прод/день × (${params.deliveryDays} + ${params.forecastDays}) - доступно (минимум 1)
+   - Проверь суммарный объём: кол-во × объём товара
+   - Заполняй машину пока суммарный объём не достигнет ${params.truckVol} м³
+   - Если товар не влезает целиком — урежь кол-во до максимума влезающего в оставшееся место
+3. Для товаров с объёмом = 0 (объём неизвестен):
+   - Включай по потребности продаж, не считай их объём
+   - totalItemVolume = null, в comment пиши "объём не указан"
+4. В totalVolume укажи суммарный объём только товаров с известным объёмом
+5. truckFillPct = round(totalVolume / ${params.truckVol} * 100)
 ${editedBlock}${extraBlock}
 
-ДАННЫЕ (наименование | код | объём | прод/день | доступно | дней | рент-ть):
+ДАННЫЕ (наименование|код|объём|прод/день|доступно|дней|рент-ть):
 ${itemLines}
 
 Верни ТОЛЬКО валидный JSON без markdown, без пояснений:
@@ -81,36 +87,20 @@ ${itemLines}
   "summary": "краткое резюме на русском"
 }`;
 
-    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
     let message: any;
-    const maxAttempts = 3;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            message = await client.messages.create({
-                model: "claude-opus-4-5",
-                max_tokens: 8096,
-                messages: [{ role: "user", content: prompt }],
-            });
-            break;
-        } catch (err: any) {
-            const status = err?.status ?? err?.statusCode ?? 0;
-            const isOverloaded = status === 529 || err?.message?.includes("overloaded");
-
-            if (isOverloaded && attempt < maxAttempts) {
-                const wait = attempt * 15_000;
-                console.log(`[AI] Overloaded, retry ${attempt}/${maxAttempts} after ${wait / 1000}s...`);
-                await sleep(wait);
-                continue;
-            }
-
-            if (isOverloaded) {
-                res.status(503).json({ error: "Серверы AI временно перегружены. Подождите 1–2 минуты и попробуйте снова." });
-                return;
-            }
-
-            throw err;
+    try {
+        message = await client.messages.create({
+            model: "claude-opus-4-7",
+            max_tokens: 16000,
+            messages: [{ role: "user", content: prompt }],
+        });
+    } catch (err: any) {
+        const status = err?.status ?? err?.response?.status;
+        if (status === 529 || err?.message?.includes("overloaded")) {
+            res.status(503).json({ error: "Серверы AI перегружены, попробуйте позже." });
+            return;
         }
+        throw err;
     }
 
     const raw = (message.content[0] as any).text as string;
