@@ -11,6 +11,7 @@ import authRoutes from "@routers/auth.route";
 import productRoute from "@routers/product.route";
 import randomazeRoute from "@routers/randomaze-article.route";
 import accountingRoute from "@routers/accounting.route";
+import myskladRoute from "@routers/mysklad.route";
 import {authMiddleware} from "@middleware/auth";
 
 const app = express();
@@ -33,6 +34,7 @@ app.use("/auth", authRoutes);
 app.use("/products", authMiddleware, productRoute);
 app.use("/randomaze-article", authMiddleware, randomazeRoute);
 app.use("/", authMiddleware, accountingRoute);
+app.use("/mysklad", authMiddleware, myskladRoute);
 
 mongoose
     .connect(Env.MONGODB_URI)
