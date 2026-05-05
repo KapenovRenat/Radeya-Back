@@ -11,17 +11,28 @@ export async function aiPurchaseAnalysis(req: Request, res: Response) {
             truckVol: number;
             forecastDays: number;
             deliveryDays: number;
+            coverageDays: number;
+            minSalesPerDay: number;
             destination: string;
         };
         editedItems?: any[];
         additionalPrompt?: string;
     };
 
-    const itemLines = items.map((item: any) => {
+    const totalLeadDays = params.forecastDays + params.deliveryDays;
+    const safetyBuffer  = Math.max(0, params.coverageDays - totalLeadDays);
+
+    // Сортируем: сначала самые срочные (мало дней)
+    const itemsSorted = [...items].sort((a: any, b: any) => {
+        const da = a.salesPerDay > 0 ? a.available / a.salesPerDay : 9999;
+        const db = b.salesPerDay > 0 ? b.available / b.salesPerDay : 9999;
+        return da - db;
+    });
+
+    const itemLines = itemsSorted.map((item: any) => {
         const daysLeft = item.salesPerDay > 0
             ? +(item.available / item.salesPerDay).toFixed(1)
             : null;
-        // Убираем кавычки из названий чтобы не ломать JSON в ответе
         const name = (item.name ?? "—").replace(/"/g, "'").replace(/\n/g, " ");
         return [
             name,
@@ -34,6 +45,20 @@ export async function aiPurchaseAnalysis(req: Request, res: Response) {
         ].join("|");
     }).join("\n");
 
+    // Явный список КРИТИЧНО — вычисляем на бэкенде
+    const criticalItems = itemsSorted.filter((item: any) => {
+        const daysLeft = item.salesPerDay > 0 ? item.available / item.salesPerDay : 9999;
+        return daysLeft < totalLeadDays && item.salesPerDay >= params.minSalesPerDay;
+    });
+    const criticalBlock = criticalItems.length > 0
+        ? `\n⚠️ КРИТИЧНО — ВКЛЮЧИТЬ ВСЕ ОБЯЗАТЕЛЬНО (${criticalItems.length} позиций, закончатся до прихода заказа):\n` +
+          criticalItems.map((item: any) => {
+              const daysLeft = item.salesPerDay > 0 ? +(item.available / item.salesPerDay).toFixed(1) : "∞";
+              const neededQty = Math.max(2, Math.ceil(item.salesPerDay * params.coverageDays - item.available));
+              return `- ${item.code} | ${(item.name ?? "").replace(/"/g, "'")} | остаток:${item.available} | ${daysLeft}дн | ${item.salesPerDay}/д | нужно:${neededQty}шт`;
+          }).join("\n")
+        : "";
+
     const editedBlock = editedItems?.length
         ? `\nПОЛЬЗОВАТЕЛЬ СКОРРЕКТИРОВАЛ СПИСОК:\n` +
           editedItems.map((e: any) => `- ${e.name} (${e.code}): заказать ${e.qty} шт, срок ${e.deliveryDays} дн`).join("\n")
@@ -43,29 +68,75 @@ export async function aiPurchaseAnalysis(req: Request, res: Response) {
         ? `\nДОПОЛНИТЕЛЬНЫЕ ПОЖЕЛАНИЯ:\n${additionalPrompt}`
         : "";
 
-    const prompt = `Ты — менеджер по закупкам мебельного магазина. Составь оптимальный список закупки на ОДНУ машину.
+    const prompt = `Ты — опытный менеджер по закупкам мебельного магазина с 10-летним стажем. Составь оптимальный список закупки на ОДНУ машину и дай профессиональный анализ по каждой позиции.
 
-ПАРАМЕТРЫ:
+ПАРАМЕТРЫ ЗАКАЗА:
 - Куда: ${params.destination}
+- Срок изготовления: ${params.forecastDays} дней
 - Срок доставки: ${params.deliveryDays} дней
-- Период между заказами: ${params.forecastDays} дней
-- Объём машины: ${params.truckVol} м³ — это жёсткий лимит
+- Полный срок заказа: ${totalLeadDays} дней (изготовление + доставка)
+- Горизонт покрытия: ${params.coverageDays} дней (запас сверх полного срока: +${safetyBuffer} дн)
+- Объём машины: ${params.truckVol} м³ — жёсткий лимит
 
-ЛОГИКА РАСЧЁТА:
-1. Приоритет товаров: сначала самые срочные (мало дней остатка), при равенстве — выше маржа
-2. Для товаров с известным объёмом (объём > 0):
-   - Рассчитай нужное кол-во: прод/день × (${params.deliveryDays} + ${params.forecastDays}) - доступно (минимум 1)
-   - Проверь суммарный объём: кол-во × объём товара
-   - Заполняй машину пока суммарный объём не достигнет ${params.truckVol} м³
-   - Если товар не влезает целиком — урежь кол-во до максимума влезающего в оставшееся место
-3. Для товаров с объёмом = 0 (объём неизвестен):
-   - Включай по потребности продаж, не считай их объём
-   - totalItemVolume = null, в comment пиши "объём не указан"
-4. В totalVolume укажи суммарный объём только товаров с известным объёмом
-5. truckFillPct = round(totalVolume / ${params.truckVol} * 100)
-${editedBlock}${extraBlock}
+ФИЛЬТР ТОВАРОВ:
+- Для КРИТИЧНО / СРОЧНО / ПЛАНОВЫЙ: только товары с прод/день ≥ ${params.minSalesPerDay}
+- Для ДОПОЛНИТЕЛЬНО (заполнение машины): можно использовать любые товары с прод/день > 0
 
-ДАННЫЕ (наименование|код|объём|прод/день|доступно|дней|рент-ть):
+КЛАССИФИКАЦИЯ СРОЧНОСТИ:
+- КРИТИЧНО: дней_остатка < ${totalLeadDays} — товар закончится ДО прихода заказа, потери продаж гарантированы
+- СРОЧНО: ${totalLeadDays} ≤ дней_остатка < ${totalLeadDays + Math.round(safetyBuffer / 2)} — придёт вовремя, но буфер минимален
+- ПЛАНОВЫЙ: ${totalLeadDays + Math.round(safetyBuffer / 2)} ≤ дней_остатка < ${params.coverageDays} — плановое пополнение, есть запас
+- ДОПОЛНИТЕЛЬНО (заполнение машины): дней_остатка ≥ ${params.coverageDays} — только для дозаполнения свободного места
+
+РАСЧЁТ КОЛИЧЕСТВА:
+- Базовое кол-во = прод/день × ${params.coverageDays} - доступно (минимум 2)
+- Приоритет при равной срочности: выше маржа → выше продажи
+
+ЗАПОЛНЕНИЕ МАШИНЫ (для товаров с объёмом > 0):
+
+ШАГ 1 — КРИТИЧНО (дней_остатка < ${totalLeadDays}) — ОБЯЗАТЕЛЬНО ВСЕ:
+- Включай КАЖДЫЙ такой товар без исключения, даже если машина переполнится
+- Кол-во = прод/день × ${params.coverageDays} - доступно (минимум 2)
+
+ШАГ 2 — СРОЧНО и ПЛАНОВЫЙ (${totalLeadDays} ≤ дней_остатка < ${params.coverageDays}):
+- Добавляй по убыванию прод/день пока есть место
+- Если места не хватает — урезай кол-во пропорционально, но не убирай совсем (минимум 2)
+
+ШАГ 3 — ДОЗАПОЛНЕНИЕ до 95% = ${(params.truckVol * 0.95).toFixed(1)} м³ (если осталось > 1 м³):
+- СТРОГО: только товары которых НЕТ в шагах 1-2 (разные коды!)
+- Возьми минимум 3-5 разных товаров (не концентрируй на одном!)
+- ЖЁСТКОЕ ОГРАНИЧЕНИЕ: один товар НЕ МОЖЕТ занимать более 35% свободного объёма
+- Распредели пропорционально прод/день: доля_i = прод/день_i / сумма_прод/день_всех_кандидатов
+- Объём для товара i = min(свободный_объём × доля_i, свободный_объём × 0.35)
+- Кол-во = max(2, round(выделенный_объём / объём_единицы))
+
+ШАГ 4 — если суммарный объём > ${params.truckVol} м³:
+- Урезай СРОЧНО/ПЛАНОВЫЙ/ДОПОЛНИТЕЛЬНО пропорционально прод/день, минимум 2
+- КРИТИЧНО — не трогать!
+
+Товары с объёмом = 0: только из шагов 1-2, totalItemVolume = null
+
+ТРЕБОВАНИЯ К КОММЕНТАРИЮ (поле comment):
+Начни с метки: КРИТИЧНО / СРОЧНО / ПЛАНОВЫЙ / ДОПОЛНИТЕЛЬНО (заполнение машины)
+Затем напиши 1-2 предложения как опытный закупщик: укажи остаток, динамику продаж, почему именно такое количество, на что обратить внимание. Например: "КРИТИЧНО: остаток 0, продаётся 0.35/д — топовая позиция, заказываем 11 шт на 30 дней покрытия." или "ПЛАНОВЫЙ: остаток 4 шт (28 дней), заказываем минимум 2 шт — подстраховка на случай роста продаж."
+
+ТРЕБОВАНИЯ К РЕЗЮМЕ (поле summary):
+Напиши развёрнутый профессиональный анализ заказа (5-8 предложений):
+- Общая картина: сколько позиций, заполнение машины, общее покрытие
+- Критические позиции: какие товары в дефиците и почему это важно
+- Структура заказа: соотношение критичных/плановых/дополнительных
+- Риски: что может пойти не так
+- Рекомендации: на что обратить внимание при следующем заказе
+
+ЦЕЛЬ ПО МАШИНЕ: truckFillPct должен быть ≥ 95%
+
+ПОЛЯ JSON ДЛЯ КАЖДОЙ ПОЗИЦИИ:
+- qty = итоговое кол-во с учётом машины (минимум 2)
+- neededQty = идеальное кол-во без ограничения машины (минимум 2; для ДОПОЛНИТЕЛЬНО = qty)
+- code = ТОЧНЫЙ код из данных, БЕЗ каких-либо изменений, суффиксов или добавлений (не "-DOZ", не "-ADD", ничего!)
+${criticalBlock}${editedBlock}${extraBlock}
+
+ДАННЫЕ (наименование|код|объём|прод/день|доступно|дней|рент-ть, отсортировано по срочности):
 ${itemLines}
 
 Верни ТОЛЬКО валидный JSON без markdown, без пояснений:
@@ -75,16 +146,17 @@ ${itemLines}
       "name": "название",
       "code": "код",
       "qty": 5,
-      "deliveryDays": 3,
+      "neededQty": 8,
+      "deliveryDays": ${params.deliveryDays},
       "itemVolume": 0.288,
       "totalItemVolume": 1.44,
       "profitPct": 45.5,
-      "comment": "короткий комментарий"
+      "comment": "КРИТИЧНО/СРОЧНО/ПЛАНОВЫЙ + короткий комментарий"
     }
   ],
   "totalVolume": 32.5,
   "truckFillPct": 92,
-  "summary": "краткое резюме на русском"
+  "summary": "развёрнутый профессиональный анализ заказа на русском языке"
 }`;
 
     let message: any;

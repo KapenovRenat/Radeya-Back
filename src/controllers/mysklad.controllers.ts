@@ -221,7 +221,7 @@ export async function getSuppliers(req: Request, res: Response) {
 
 export async function syncSuppliers(req: Request, res: Response) {
     const { data } = await ms.get("/entity/counterparty", {
-        // params: { limit: 100 },
+        params: { limit: 100 },
     });
 
     const rows = data.rows ?? [];
