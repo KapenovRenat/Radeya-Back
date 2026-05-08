@@ -102,13 +102,12 @@ export async function aiPurchaseAnalysis(req: Request, res: Response) {
 - Добавляй по убыванию прод/день пока есть место
 - Если места не хватает — урезай кол-во пропорционально, но не убирай совсем (минимум 2)
 
-ШАГ 3 — ДОЗАПОЛНЕНИЕ до 95% = ${(params.truckVol * 0.95).toFixed(1)} м³ (если осталось > 1 м³):
+ШАГ 3 — ДОЗАПОЛНЕНИЕ (если осталось > 1 м³ после шагов 1-2):
 - СТРОГО: только товары которых НЕТ в шагах 1-2 (разные коды!)
-- Возьми минимум 3-5 разных товаров (не концентрируй на одном!)
-- ЖЁСТКОЕ ОГРАНИЧЕНИЕ: один товар НЕ МОЖЕТ занимать более 35% свободного объёма
-- Распредели пропорционально прод/день: доля_i = прод/день_i / сумма_прод/день_всех_кандидатов
-- Объём для товара i = min(свободный_объём × доля_i, свободный_объём × 0.35)
-- Кол-во = max(2, round(выделенный_объём / объём_единицы))
+- Максимум 5 позиций ДОПОЛНИТЕЛЬНО, выбирай по убыванию прод/день
+- Кол-во = max(2, ceil(прод/день × ${params.coverageDays} - доступно)) — ЖЁСТКИЙ ПОТОЛОК, больше не брать!
+- Добавляй пока суммарный объём ≤ 95% машины, если не хватает кандидатов — пиши реальный %
+- ЖЁСТКОЕ ОГРАНИЧЕНИЕ: суммарный объём одного ДОПОЛНИТЕЛЬНО товара ≤ 25% свободного объёма
 
 ШАГ 4 — если суммарный объём > ${params.truckVol} м³:
 - Урезай СРОЧНО/ПЛАНОВЫЙ/ДОПОЛНИТЕЛЬНО пропорционально прод/день, минимум 2
@@ -198,6 +197,35 @@ ${itemLines}
         console.error("[AI parse error]", e.message, "\nRaw:", raw);
         res.status(500).json({ error: `Ошибка парсинга ответа AI: ${e.message}`, raw });
         return;
+    }
+
+    // Пост-обработка: жёстко капаем кол-во ДОПОЛНИТЕЛЬНО по формуле покрытия
+    // AI иногда игнорирует промпт и раздувает qty — исправляем программно
+    if (Array.isArray(parsed.items)) {
+        const itemMap = new Map(items.map((i: any) => [i.code, i]));
+        parsed.items = parsed.items.map((item: any) => {
+            if (typeof item.comment === "string" && item.comment.startsWith("ДОПОЛНИТЕЛЬНО")) {
+                const src = itemMap.get(item.code);
+                if (src && src.salesPerDay > 0) {
+                    const maxQty = Math.max(2, Math.ceil(src.salesPerDay * params.coverageDays - src.available));
+                    if (item.qty > maxQty) {
+                        console.log(`[AI cap] ДОПОЛНИТЕЛЬНО ${item.code}: qty ${item.qty} → ${maxQty}`);
+                        item.qty = maxQty;
+                    }
+                    item.neededQty = Math.max(2, Math.ceil(src.salesPerDay * params.coverageDays - src.available));
+                    // Пересчитываем totalItemVolume
+                    if (item.itemVolume > 0) {
+                        item.totalItemVolume = +(item.qty * item.itemVolume).toFixed(3);
+                    }
+                }
+            }
+            return item;
+        });
+
+        // Пересчитываем totalVolume и truckFillPct после коррекции
+        const newTotal = parsed.items.reduce((sum: number, it: any) => sum + (it.totalItemVolume ?? 0), 0);
+        parsed.totalVolume = +newTotal.toFixed(2);
+        parsed.truckFillPct = +(newTotal / params.truckVol * 100).toFixed(1);
     }
 
     res.json(parsed);

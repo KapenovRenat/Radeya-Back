@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import ExcelJS from "exceljs";
 
 export async function exportPurchaseExcel(req: Request, res: Response) {
-    const { items, params, aiTruck, aiSummary } = req.body as {
+    const { items, params, aiTruck, aiSummary, dateFrom, dateTo } = req.body as {
         items: Array<{
             name: string;
             code: string;
@@ -24,6 +24,8 @@ export async function exportPurchaseExcel(req: Request, res: Response) {
         };
         aiTruck?: { totalVolume: number; truckFillPct: number } | null;
         aiSummary?: string;
+        dateFrom?: string;
+        dateTo?: string;
     };
 
     const workbook = new ExcelJS.Workbook();
@@ -73,9 +75,22 @@ export async function exportPurchaseExcel(req: Request, res: Response) {
 
     // ─── Параметры ───────────────────────────────────────────
     const date = new Date().toLocaleDateString("ru-RU");
+
+    // Форматируем период анализа продаж
+    let periodStr = "";
+    if (dateFrom && dateTo) {
+        const from = new Date(dateFrom);
+        const to   = new Date(dateTo);
+        const fromFmt = from.toLocaleDateString("ru-RU");
+        const toFmt   = to.toLocaleDateString("ru-RU");
+        const months  = Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24 * 30));
+        const periodLabel = months >= 1 ? `${months} мес.` : `${Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))} дн.`;
+        periodStr = `   |   Период анализа: ${fromFmt} — ${toFmt} (${periodLabel})`;
+    }
+
     sheet.mergeCells("A2:K2");
     const paramCell = sheet.getCell("A2");
-    paramCell.value = `Дата: ${date}   |   Объём машины: ${params.truckVol} м³   |   Срок изготовления: ${params.forecastDays} дн   |   Срок доставки: ${params.deliveryDays} дн   |   Полный срок: ${params.forecastDays + params.deliveryDays} дн   |   Горизонт покрытия: ${params.coverageDays} дн`;
+    paramCell.value = `Дата: ${date}   |   Объём машины: ${params.truckVol} м³   |   Срок изготовления: ${params.forecastDays} дн   |   Срок доставки: ${params.deliveryDays} дн   |   Полный срок: ${params.forecastDays + params.deliveryDays} дн   |   Горизонт покрытия: ${params.coverageDays} дн${periodStr}`;
     paramCell.font = { name: "Calibri", size: 10, color: { argb: WHITE } };
     paramCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLUE } };
     paramCell.alignment = { vertical: "middle", horizontal: "center" };
